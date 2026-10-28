@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Scan Dashboard</title>
+<script src="/vendor/chart.js"></script>
+<script src="/vendor/jsqr.js"></script>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#15181d; --muted:#6b7280; --line:#e5e7eb; --soft:#f1f3f6;
+          --a:#2563eb; --a-soft:#eff4ff; --b:#16a34a; --c:#f59e0b; --bad:#dc2626; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --card:#181b21; --ink:#eef0f3; --muted:#9aa1ac; --line:#2a2f38;
+          --soft:#20242c; --a:#4f86f7; --a-soft:#1b2540; --bad:#f87171; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px 16px 56px; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  h1 { font-size:22px; margin:0; }
+  h2 { font-size:13px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+  h3 { font-size:18px; margin:0; }
+  .sub { color:var(--muted); font-size:13px; }
+  a { color:var(--a); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input, select, .btn { font:inherit; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+  input { width:100%; }
+  .btn { cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  .btn:hover { background:var(--soft); }
+  .btn.primary { background:var(--a); border-color:var(--a); color:#fff; font-weight:600; }
+  .btn.primary:hover { filter:brightness(1.08); }
+  .btn.sm { padding:5px 10px; font-size:13px; }
+  .btn.danger { color:var(--bad); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; }
+  .grid { display:grid; gap:16px; }
+  section { margin-bottom:28px; }
+
+  /* Upload panel */
+  .upload { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); gap:20px; }
+  @media (max-width:820px) { .upload { grid-template-columns:1fr; } }
+  .drop { border:2px dashed var(--line); border-radius:12px; min-height:220px; display:flex; flex-direction:column; align-items:center;
+          justify-content:center; text-align:center; padding:20px; cursor:pointer; transition:.15s; background:var(--soft); }
+  .drop.over, .drop:hover { border-color:var(--a); background:var(--a-soft); }
+  .drop img { max-width:170px; max-height:170px; border-radius:8px; background:#fff; padding:6px; }
+  .drop .big { font-size:16px; font-weight:600; margin:6px 0 2px; }
+  .form label { display:block; font-size:13px; color:var(--muted); margin:0 0 4px; }
+  .form .field { margin-bottom:14px; }
+  .msg { font-size:14px; padding:10px 12px; border-radius:8px; margin-bottom:14px; display:none; }
+  .msg.ok { display:block; background:#dcfce7; color:#14532d; }
+  .msg.err { display:block; background:#fee2e2; color:#7f1d1d; }
+  .msg.info { display:block; background:var(--a-soft); color:var(--ink); }
+
+  /* QR list */
+  .qrs { grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); }
+  .qr { display:flex; flex-direction:column; gap:12px; cursor:pointer; transition:.15s; }
+  .qr:hover { border-color:var(--muted); }
+  .qr.sel { border-color:var(--a); box-shadow:0 0 0 2px var(--a-soft); }
+  .qr .top { display:flex; gap:12px; }
+  .qr .row { flex-wrap:nowrap; } .qr .row .btn.danger { margin-left:auto; }
+  .qr .top img { width:84px; height:84px; border-radius:6px; background:#fff; padding:3px; flex:none; border:1px solid var(--line); }
+  .qr .name { font-weight:600; font-size:16px; overflow-wrap:anywhere; }
+  .qr .tgt { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+  .nums { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; text-align:center; background:var(--soft); border-radius:8px; padding:8px 4px; }
+  .nums b { display:block; font-size:20px; font-variant-numeric:tabular-nums; }
+  .nums span { font-size:11px; color:var(--muted); }
+  .empty { text-align:center; padding:36px; color:var(--muted); }
+
+  /* Stats */
+  .kpis { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); margin-bottom:16px; }
+  .kpi .label { color:var(--muted); font-size:13px; }
+  .kpi .val { font-size:30px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .kpi .note { color:var(--muted); font-size:12px; }
+  .wide { grid-template-columns:2fr 1fr; margin-bottom:16px; }
+  .three { grid-template-columns:repeat(3,1fr); margin-bottom:16px; }
+  @media (max-width:860px) { .wide,.three { grid-template-columns:1fr; } }
+  .chart { position:relative; height:260px; } .chart.sm { height:200px; }
+  .tbl { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:99px; }
+  .new { background:#dcfce7; color:#166534; } .rep { background:var(--soft); color:var(--muted); }
+
+  /* Login + modal */
+  .login { max-width:360px; margin:12vh auto; }
+  dialog { border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); padding:20px; width:min(440px,92vw); }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+  .hide { display:none !important; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="wrap hide" id="loginView">
+  <div class="card login">
+    <h3 style="margin-bottom:6px">QR Scan Dashboard</h3>
+    <p class="sub" style="margin-top:0">Enter your dashboard password.</p>
+    <form id="loginForm">
+      <div class="msg" id="loginMsg"></div>
+      <input type="password" id="pw" placeholder="Password" autofocus>
+      <button class="btn primary" style="margin-top:12px;width:100%;justify-content:center">Open dashboard</button>
+    </form>
+  </div>
+</div>
+
+<div class="wrap hide" id="appView">
+  <header>
+    <div><h1>QR Scan Dashboard</h1><div class="sub">Upload a QR code, print the trackable version, watch the scans come in.</div></div>
+    <div class="row"><button class="btn sm" id="logout">Log out</button></div>
+  </header>
+  <div class="msg err" id="localWarn" style="display:none;margin-bottom:20px"></div>
+
+  <!-- 1. Upload panel -->
+  <section>
+    <h2>Add a QR code</h2>
+    <div class="card upload">
+      <div class="drop" id="drop">
+        <div id="dropInner">
+          <div style="font-size:34px">⬆</div>
+          <div class="big">Drop your QR image here</div>
+          <div class="sub">or click to choose · you can also paste (Ctrl+V)</div>
+        </div>
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <form class="form" id="addForm">
+        <div class="msg" id="addMsg"></div>
+        <div class="field">
+          <label for="tgt">Link inside the QR (where people will be sent)</label>
+          <input id="tgt" placeholder="Read automatically from your image, or type a link: https://…">
+        </div>
+        <div class="field">
+          <label for="nm">Name (so you can recognise it)</label>
+          <input id="nm" placeholder="e.g. Shop poster, Business card, Flyer">
+        </div>
+        <button class="btn primary" id="addBtn">Create trackable QR</button>
+        <p class="sub" style="margin-bottom:0">How it works: your QR code's link is wrapped in a tracking link.
+          Print the <b>new</b> QR code. Each scan is counted, then the person is sent on to your link.
+          Scans of the old printed code can't be counted.</p>
+      </form>
+    </div>
+  </section>
+
+  <!-- 2. QR list -->
+  <section>
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">Your QR codes</h2>
+      <span class="sub">Click a card to see its history</span>
+    </div>
+    <div class="grid qrs" id="qrList"></div>
+  </section>
+
+  <!-- 3. Stats + history -->
+  <section>
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <h3 id="statsTitle">All QR codes</h3>
+      <div class="row">
+        <select id="pick"></select>
+        <select id="days">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last year</option>
+        </select>
+        <button class="btn" id="csv">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="grid kpis">
+      <div class="card kpi"><div class="label">Unique people</div><div class="val" id="kUnique">–</div><div class="note">all time · each person once</div></div>
+      <div class="card kpi"><div class="label">Total scans</div><div class="val" id="kTotal">–</div><div class="note">all time · incl. repeats</div></div>
+      <div class="card kpi"><div class="label">Today</div><div class="val" id="kToday">–</div><div class="note" id="kTodayNote">unique people</div></div>
+      <div class="card kpi"><div class="label">In selected period</div><div class="val" id="kPeriod">–</div><div class="note" id="kPeriodNote">unique people</div></div>
+    </div>
+
+    <div class="grid wide">
+      <div class="card"><h2>Scans per day</h2><div class="chart"><canvas id="cDaily"></canvas></div></div>
+      <div class="card"><h2 id="splitTitle">Scans by QR code</h2><div class="chart"><canvas id="cSplit"></canvas></div></div>
+    </div>
+
+    <div class="grid three">
+      <div class="card"><h2>Device</h2><div class="chart sm"><canvas id="cDevice"></canvas></div></div>
+      <div class="card"><h2>Phone system</h2><div class="chart sm"><canvas id="cOs"></canvas></div></div>
+      <div class="card"><h2>Time of day</h2><div class="chart sm"><canvas id="cHour"></canvas></div></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Scan history</h2><span class="sub" id="histCount"></span>
+      </div>
+      <div class="tbl"><table>
+        <thead><tr><th>Date &amp; time</th><th>QR code</th><th>Device</th><th>System</th><th>Person</th></tr></thead>
+        <tbody id="history"></tbody>
+      </table></div>
+      <div style="text-align:center;margin-top:12px"><button class="btn sm hide" id="more">Show more</button></div>
+    </div>
+  </section>
+</div>
+
+<!-- Edit dialog -->
+<dialog id="editDlg">
+  <form id="editForm">
+    <h3 style="margin-bottom:14px">Edit QR code</h3>
+    <div class="msg" id="editMsg"></div>
+    <div class="form">
+      <div class="field"><label>Name</label><input id="eName"></div>
+      <div class="field"><label>Send people to</label><input id="eTgt">
+        <div class="sub" style="margin-top:4px">You can change this any time. Printed codes keep working.</div></div>
+    </div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" class="btn" id="eCancel">Cancel</button>
+      <button class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+// ---------- basics ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
+let key = new URLSearchParams(location.search).get('key') || store.get('qr_key') || '';
+const tz = new Date().getTimezoneOffset();
+let qrs = [], selected = 'all', histLimit = 50, editing = null;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-dashboard-key': key, ...(opts.headers || {}) } });
+  if (r.status === 401) { showLogin('Wrong password, please try again.'); throw new Error('auth'); }
+  const data = r.headers.get('content-type')?.includes('json') ? await r.json() : null;
+  if (!r.ok) throw new Error(data?.error || 'Something went wrong');
+  return data;
+}
+function msg(el, text, type) { el.className = 'msg ' + (type || ''); el.textContent = text || ''; }
+
+// ---------- login ----------
+function showLogin(text) {
+  $('appView').classList.add('hide'); $('loginView').classList.remove('hide');
+  if (text) msg($('loginMsg'), text, 'err');
+  store.set('qr_key', null);
+}
+$('loginForm').onsubmit = async e => {
+  e.preventDefault(); key = $('pw').value; store.set('qr_key', key); start();
+};
+$('logout').onclick = () => { key = ''; showLogin(); history.replaceState(null, '', '/dashboard.html'); };
+
+// ---------- upload & decode ----------
+const drop = $('drop'), file = $('file');
+let originalThumb = null;
+drop.onclick = () => file.click();
+file.onchange = () => file.files[0] && readImage(file.files[0]);
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => e.dataTransfer.files[0] && readImage(e.dataTransfer.files[0]));
+document.addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) readImage(item.getAsFile());
+});
+
+function readImage(f) {
+  if (!f.type.startsWith('image/')) return msg($('addMsg'), 'Please choose an image file (PNG, JPG…).', 'err');
+  const img = new Image();
+  img.onload = () => {
+    // Try a few sizes: helps with very large photos and tiny images
+    let code = null;
+    for (const size of [Math.min(img.width, 1200), 800, 500, 300]) {
+      const scale = size / Math.max(img.width, img.height);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      code = jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+      if (code) break;
+    }
+    // small thumbnail of your original, shown on the card
+    const t = document.createElement('canvas'); const s = 160 / Math.max(img.width, img.height);
+    t.width = img.width * s; t.height = img.height * s;
+    const tc = t.getContext('2d'); tc.fillStyle = '#fff'; tc.fillRect(0, 0, t.width, t.height); tc.drawImage(img, 0, 0, t.width, t.height);
+    originalThumb = t.toDataURL('image/png');
+    $('dropInner').innerHTML = `<img src="${originalThumb}" alt="Your QR"><div class="sub" style="margin-top:8px">Click to choose a different image</div>`;
+
+    if (!code) return msg($('addMsg'), "Couldn't read a QR code in that image. Try a sharper or tighter crop, or type the link yourself.", 'err');
+    const text = code.data.trim();
+    $('tgt').value = text;
+    if (!/^https?:\/\//i.test(text)) return msg($('addMsg'), `This QR contains "${text.slice(0, 80)}", which isn't a website link, so it can't be tracked.`, 'err');
+    if (!$('nm').value) $('nm').value = (() => { try { return new URL(text).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+    msg($('addMsg'), 'QR code read. It points to ' + text + '. Give it a name and click Create.', 'info');
+    $('nm').focus(); $('nm').select();
+  };
+  img.onerror = () => msg($('addMsg'), "That file couldn't be opened as an image.", 'err');
+  img.src = URL.createObjectURL(f);
+}
+
+$('addForm').onsubmit = async e => {
+  e.preventDefault();
+  const target = $('tgt').value.trim();
+  if (!target) return msg($('addMsg'), 'Upload a QR image or type a link first.', 'err');
+  $('addBtn').disabled = true;
+  try {
+    const qr = await api('/api/qrs', { method: 'POST', body: JSON.stringify({ target, name: $('nm').value, original: originalThumb }) });
+    msg($('addMsg'), `Created "${qr.name}". Download its new QR code from the card below and print that one.`, 'ok');
+    $('tgt').value = ''; $('nm').value = ''; originalThumb = null; file.value = '';
+    $('dropInner').innerHTML = `<div style="font-size:34px">⬆</div><div class="big">Drop another QR image</div><div class="sub">or click to choose</div>`;
+    selected = qr.id; histLimit = 50;
+    await refresh();
+    document.querySelector(`[data-id="${qr.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (err) { if (err.message !== 'auth') msg($('addMsg'), err.message, 'err'); }
+  $('addBtn').disabled = false;
+};
+
+// ---------- QR list ----------
+function ago(t) {
+  if (!t) return 'never';
+  const m = Math.round((Date.now() - t) / 6e4);
+  if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+  const h = Math.round(m / 60); if (h < 24) return h + ' h ago';
+  return Math.round(h / 24) + ' days ago';
+}
+function renderList() {
+  if (!qrs.length) { $('qrList').innerHTML = '<div class="card empty" style="grid-column:1/-1">No QR codes yet. Upload one above to get started.</div>'; return; }
+  $('qrList').innerHTML = qrs.map(q => `
+    <div class="card qr ${selected === q.id ? 'sel' : ''}" data-id="${q.id}">
+      <div class="top">
+        <img src="/qr/${q.id}.png?w=200" alt="Trackable QR for ${esc(q.name)}">
+        <div style="min-width:0">
+          <div class="name">${esc(q.name)}</div>
+          <div class="tgt">→&nbsp;${esc(q.target)}</div>
+          <div class="sub" style="font-size:12px;margin-top:4px">Last scan: ${ago(q.lastScan)}</div>
+          <div class="sub" style="font-size:11px;margin-top:2px;overflow-wrap:anywhere" title="This is the link inside the new QR code">QR link: ${esc(q.scanUrl)}</div>
+        </div>
+      </div>
+      <div class="nums">
+        <div><b>${q.unique}</b><span>people</span></div>
+        <div><b>${q.total}</b><span>scans</span></div>
+        <div><b>${q.todayUnique}</b><span>today</span></div>
+      </div>
+      <div class="row">
+        <a class="btn sm primary" href="/qr/${q.id}.png?download=1" onclick="event.stopPropagation()">⬇ Download QR</a>
+        <button class="btn sm" data-act="edit">Edit</button>
+        <button class="btn sm danger" data-act="del">Delete</button>
+      </div>
+    </div>`).join('');
+}
+$('qrList').onclick = async e => {
+  const card = e.target.closest('.qr'); if (!card) return;
+  const q = qrs.find(x => x.id === card.dataset.id);
+  const act = e.target.dataset.act;
+  if (act === 'del') {
+    if (!confirm(`Delete "${q.name}" and all ${q.total} of its scans? Printed copies of this QR will stop working.`)) return;
+    await api('/api/qrs/' + q.id, { method: 'DELETE' });
+    if (selected === q.id) selected = 'all';
+    return refresh();
+  }
+  if (act === 'edit') {
+    editing = q; $('eName').value = q.name; $('eTgt').value = q.target; msg($('editMsg'));
+    return $('editDlg').showModal();
+  }
+  selected = selected === q.id ? 'all' : q.id; histLimit = 50; refresh();
+};
+$('eCancel').onclick = () => $('editDlg').close();
+$('editForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    await api('/api/qrs/' + editing.id, { method: 'PATCH', body: JSON.stringify({ name: $('eName').value, target: $('eTgt').value }) });
+    $('editDlg').close(); refresh();
+  } catch (err) { msg($('editMsg'), err.message, 'err'); }
+};
+
+// ---------- charts ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const palette = [css('--a'), css('--b'), css('--c'), '#a855f7', '#ef4444', '#06b6d4', '#64748b'];
+Chart.defaults.color = css('--muted'); Chart.defaults.borderColor = css('--line'); Chart.defaults.font.family = 'system-ui, sans-serif';
+const charts = {};
+function upsert(id, cfg) {
+  if (charts[id]) { charts[id].data = cfg.data; charts[id].update('none'); }
+  else charts[id] = new Chart($(id), cfg);
+}
+const doughnut = obj => {
+  const empty = !Object.keys(obj).length;
+  return { type: 'doughnut',
+    data: { labels: empty ? ['No scans yet'] : Object.keys(obj),
+            datasets: [{ data: empty ? [1] : Object.values(obj), backgroundColor: empty ? [css('--line')] : palette, borderWidth: 0 }] },
+    options: { maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom' }, tooltip: { enabled: !empty } } } };
+};
+const bars = (labels, data, color, extra = {}) => ({ type: 'bar', data: { labels, datasets: [{ label: 'Scans', data, backgroundColor: color, borderRadius: 3 }] },
+  options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, ...extra,
+    scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+// ---------- stats ----------
+async function loadStats() {
+  const days = $('days').value;
+  const s = await api(`/api/stats?qr=${selected}&days=${days}&tz=${tz}&limit=${histLimit}`);
+  const q = qrs.find(x => x.id === selected);
+  $('statsTitle').textContent = q ? q.name : 'All QR codes';
+  $('pick').value = selected;
+  $('kUnique').textContent = s.allTime.unique.toLocaleString();
+  $('kTotal').textContent = s.allTime.total.toLocaleString();
+  $('kToday').textContent = s.today.unique.toLocaleString();
+  $('kTodayNote').textContent = `unique people · ${s.today.total} scans`;
+  $('kPeriod').textContent = s.period.unique.toLocaleString();
+  $('kPeriodNote').textContent = `unique people · ${s.period.total} scans`;
+
+  upsert('cDaily', { type: 'bar',
+    data: { labels: s.daily.map(d => d.date.slice(5).split('-').reverse().join('/')),
+      datasets: [ { label: 'Unique people', data: s.daily.map(d => d.unique), backgroundColor: palette[0], borderRadius: 4 },
+                  { label: 'Total scans', data: s.daily.map(d => d.total), backgroundColor: palette[0] + '44', borderRadius: 4 } ] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } },
+      scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  // Right-hand chart: compare QR codes (All) or show weekday pattern (single QR)
+  if (selected === 'all') {
+    $('splitTitle').textContent = 'Scans by QR code';
+    upsert('cSplit', doughnut(s.byQr));
+  } else {
+    $('splitTitle').textContent = 'New vs repeat scans';
+    const rep = s.history.filter(h => h.repeat).length, fresh = s.history.length - rep;
+    upsert('cSplit', doughnut(s.history.length ? { 'First scan': fresh, 'Repeat scan': rep } : {}));
+  }
+  upsert('cDevice', doughnut(s.devices));
+  upsert('cOs', doughnut(s.oses));
+  upsert('cHour', bars(s.hours.map((_, i) => `${i}:00`), s.hours, palette[1]));
+
+  $('history').innerHTML = s.history.map(h => `<tr>
+      <td>${new Date(h.t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</td>
+      <td>${esc(h.qr)}</td><td>${h.device}</td><td>${h.os}</td>
+      <td><span class="tag ${h.repeat ? 'rep' : 'new'}">${h.repeat ? 'repeat' : 'new person'}</span></td></tr>`).join('')
+    || '<tr><td colspan="5" class="sub" style="text-align:center;padding:24px">No scans yet. They\'ll appear here as soon as someone scans.</td></tr>';
+  $('histCount').textContent = s.historyTotal ? `showing ${s.history.length} of ${s.historyTotal}` : '';
+  $('more').classList.toggle('hide', s.history.length >= s.historyTotal);
+}
+$('more').onclick = () => { histLimit += 100; loadStats(); };
+$('days').onchange = loadStats;
+$('pick').onchange = () => { selected = $('pick').value; histLimit = 50; renderList(); loadStats(); };
+$('csv').onclick = async () => {
+  const r = await fetch(`/api/export.csv?qr=${selected}`, { headers: { 'x-dashboard-key': key } });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = 'qr-scans.csv'; a.click();
+};
+
+async function refresh() {
+  qrs = await api('/api/qrs?tz=' + tz);
+  if (selected !== 'all' && !qrs.some(q => q.id === selected)) selected = 'all';
+  $('pick').innerHTML = '<option value="all">All QR codes</option>' + qrs.map(q => `<option value="${q.id}">${esc(q.name)}</option>`).join('');
+  renderList();
+  await loadStats();
+}
+
+let timer;
+async function start() {
+  if (!key) return showLogin();
+  try {
+    await refresh();
+    const info = await api('/api/info');
+    const w = $('localWarn');
+    if (info.vercelWithoutDb) {
+      w.style.display = 'block';
+      w.innerHTML = `<b>No database connected.</b> On Vercel, QR codes and scans will disappear. In your Vercel project, open `
+        + `<b>Storage</b>, add a <b>Neon</b> (Postgres) database, connect it to this project, then redeploy.`;
+    } else if (info.local) {
+      w.style.display = 'block';
+      w.innerHTML = `<b>Phones can't open these QR codes yet.</b> They point to <code>${esc(info.base)}</code>, which only works on this computer. `
+        + `To test with your phone on the same Wi-Fi, open the dashboard using your computer's network address `
+        + `(shown in the terminal, like <code>http://192.168.1.5:${location.port || 80}/dashboard</code>) and download the QR again. `
+        + `For real use, put the app online and set PUBLIC_URL.`;
+    } else w.style.display = 'none';
+    $('loginView').classList.add('hide'); $('appView').classList.remove('hide');
+    store.set('qr_key', key);
+    if (location.search.includes('key=')) history.replaceState(null, '', '/dashboard.html');  // hide password from the address bar
+    clearInterval(timer); timer = setInterval(() => refresh().catch(() => {}), 15000);
+  } catch {}
+}
+start();
+</script>
+</body>
+</html>

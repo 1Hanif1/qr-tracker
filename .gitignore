@@ -1,0 +1,5 @@
+node_modules
+scans.json
+scans.json.tmp
+.vercel
+.env*
